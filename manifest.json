@@ -1,0 +1,22 @@
+{
+
+	"manifest_version": 2,
+	"name": "Resume YouTube",
+	"version": "2.1.0",
+
+	"content_scripts": [
+		{
+			"matches": ["*://*.youtube.com/watch*"],
+			"js": ["backend.js"],
+			"run_at": "document_end"
+		},
+		{
+			"matches": ["*://*.youtube.com/*"],
+			"js": ["resume_playlist.js"],
+			"run_at": "document_start"
+		}
+	],
+	
+	"web_accessible_resources": [ "frontend.js" ]
+
+}
