@@ -7,6 +7,9 @@ var resumer = {
 	toggle_button:	null,
 	seek_to:		0,
 	
+	waiting:		false,	// waiting for new video
+	waitTimer:		null,
+	
 	watchTimer:		null,
 	watch_seconds:	5,
 	
@@ -18,14 +21,20 @@ var resumer = {
 	cookie_prefix:	"w1_resume",
 	cookie_life:	60*60*24*30,	// seconds
 	
+	use_localStorage:	false,
+	
 	// -----------------------------------------
 	//	START HERE
 	// -----------------------------------------
 	
 	init: function(){
-		if(typeof(Storage) == "undefined") {
-			console.log("Local Storage isn't available");
-			return;
+		if(typeof(Storage) !== "undefined"){
+			this.use_localStorage = true;
+			console.log("<Using LocalStorage>");
+		}
+		else {
+			this.use_localStorage = false;
+			console.log("<Using Cookies>");
 		}
 	
 		if(!this.loadPlayer()){
@@ -40,7 +49,8 @@ var resumer = {
 			this.onVideoStateChange.bind(this)
 		);
 		
-		this.videoLoaded();
+		// manually execute first-time video loading
+		this.waitForNewVideo();
 	},
 	
 	// -----------------------------------------
@@ -89,10 +99,11 @@ var resumer = {
 		//console.log("new state: " + newState);
 		
 		if(newState == this.STATE_UNSTARTED){
-			this.videoLoaded();
+			this.stopWatchTimer();
+			this.waitForNewVideo();
 		}
 		
-		if(this.enabled){
+		if(this.enabled && !this.waiting){
 			if(newState == this.STATE_PLAYING){
 				if(this.seek_to != 0){
 					this.player.seekTo(this.seek_to);
@@ -111,16 +122,47 @@ var resumer = {
 		}
 	},
 	
-	// WHEN NEW VIDEO IS LOADED...
-	videoLoaded: function(){
+	// VIDEO IS CHANGING, WAIT UNTIL NEW VIDEO DATA IS AVAILABLE
+	// (I added this because the video-data is changed in different player-state in each time)
+	// [IDEA TO DO: check new video-id on STATE_PLAYING, and then if new video available, seek to position immediately]
+	waitForNewVideo: function(){
+		this.waiting = true;
+		
+		// check for new video-id
 		var new_vid = this.getVideoId();
 
+		//console.log("waiting... [" + new_vid + "]");
+		
 		if(new_vid == this.current_vid){
+			if(this.waitTimer){
+				clearTimeout(this.waitTimer);
+			}
+			
+			this.waitTimer = setTimeout(
+				this.waitForNewVideo.bind(this),
+				200
+			);
+			
 			return;
 		}
 		
+		// update new video-id
 		this.current_vid = new_vid;
 		
+		this.waiting = false;
+		
+		// update video data
+		this.videoLoaded();
+		
+		// update player if state changed
+		var current_state = this.player.getPlayerState();
+		if(current_state != this.STATE_UNSTARTED){
+			this.onVideoStateChange( current_state );
+		}
+	},
+	
+	// WHEN NEW VIDEO IS LOADED...
+	videoLoaded: function(){		
 		console.log("new video: " + this.current_vid);
 		
 		var saved_time = this.getSavedTime(this.current_vid);
@@ -194,14 +236,40 @@ var resumer = {
 	
 	// SAVE CURREMT VIDEO TIME
 	saveCurrentTime: function(){
-		this.setCookie(this.getVideoCookieName(this.current_vid) , this.player.getCurrentTime() , this.cookie_life , "");
+		if(this.use_localStorage){
+			localStorage.setItem(this.getVideoCookieName(this.current_vid), this.player.getCurrentTime());
+		}
+		else {
+			this.setCookie(this.getVideoCookieName(this.current_vid) , this.player.getCurrentTime() , this.cookie_life , "");
+		}
+		
 		//console.log(this.player.getPlayerState() + " :: " + this.player.getCurrentTime());
 	},
 	
 	// GET SAVED TIME OF VIDEO
 	getSavedTime: function(vid){
-		var saved_time = this.getCookie(this.getVideoCookieName(vid));
-		if(saved_time != ""){
+		var saved_time = "";
+		var vid_key = this.getVideoCookieName(vid);
+		
+		// even if we use localStorage, load cookie for upgrading
+		var saved_cookie = this.getCookie(vid_key);
+		
+		if(this.use_localStorage){
+			saved_time = localStorage.getItem(vid_key);
+			
+			// UPGRADE DATA STORAGE (from cookies to localStorage)
+			if(saved_time == null && saved_cookie != ""){
+				//console.log("upgrading cookie");
+				localStorage.setItem(vid_key, saved_cookie);
+				saved_time = saved_cookie;
+				this.removeCookie(vid_key);
+			}
+		}
+		else {
+			saved_time = saved_cookie;
+		}
+		
+		if(saved_time != "" && saved_time != null){
 			return saved_time;
 		}
 		
@@ -210,6 +278,7 @@ var resumer = {
 	
 	// REMOVE SAVED TIME FOR VIDEO
 	clearSavedTime: function(vid){
+		localStorage.removeItem(this.getVideoCookieName(vid));
 		this.removeCookie(this.getVideoCookieName(vid));
 	},
 	

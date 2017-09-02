@@ -3,6 +3,8 @@ var last_url_query_data = "";
 //var cookie_separator = "|,|";
 var short_title_length = 30;
 
+var use_localStorage = (typeof(Storage) !== "undefined");
+
 //DOMupdate();
 
 // http://stackoverflow.com/a/34100952/7550127
@@ -130,11 +132,35 @@ function savePlaylistVideo(listid, vid, title){
 		"title"	: title
 	};
 	
-	setCookie(getPlaylistCookieName(listid) , JSON.stringify(save_data) , 60*60*24*30 , "");
+	if(use_localStorage){
+		localStorage.setItem(getPlaylistCookieName(listid), JSON.stringify(save_data));
+	}
+	else {
+		setCookie(getPlaylistCookieName(listid) , JSON.stringify(save_data) , 60*60*24*30 , "");
+	}
 }
 
 function getSavedPlaylistVideo(listid){
-	var data = getCookie(getPlaylistCookieName(listid));
+	
+	var list_key = getPlaylistCookieName(listid);
+	
+	// even if we use localStorage, load cookie for upgrading
+	var cookie_data = getCookie(list_key);
+	
+	if(use_localStorage){
+		data = localStorage.getItem(list_key);
+		
+		// UPGRADE DATA STORAGE (from cookies to localStorage)
+		if(data == null && cookie_data != ""){
+			//console.log("upgrading list cookie");
+			localStorage.setItem(list_key, cookie_data);
+			data = cookie_data;
+			removeCookie(list_key);
+		}
+	}
+	else {
+		data = cookie_data;
+	}
 	
 	var saved_data = {};
 	
