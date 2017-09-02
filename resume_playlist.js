@@ -19,6 +19,8 @@ function DOMupdate(){
 
 	// this page is part of a list?
 	if("list" in query){
+		console.log("list: " + query['list']);
+		
 		var saved_video = getSavedPlaylistVideo(query['list']);
 		
 		// this page containing video?
@@ -170,6 +172,13 @@ function getSavedPlaylistVideo(listid){
 	catch(e) {
 		saved_data.vid = "";
 		saved_data.title = "";
+	}
+	
+	if(saved_data == null){
+		saved_data = {
+			"vid"	: "",
+			"title"	: ""
+		};
 	}
 	
 	return {
