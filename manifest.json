@@ -2,7 +2,7 @@
 
 	"manifest_version": 2,
 	"name": "Resume YouTube",
-	"version": "2.3.0",
+	"version": "2.3.1",
 
 	"content_scripts": [
 		{

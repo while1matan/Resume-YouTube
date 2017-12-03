@@ -3,6 +3,10 @@ var document_timer;
 var short_title_length = 55;
 var use_localStorage = (typeof(Storage) !== "undefined");
 
+var last_title_in_page = "";
+var title_timer;
+var title_retries = 120;
+
 // waitForDocument();
 
 // http://stackoverflow.com/a/34100952/7550127
@@ -49,13 +53,20 @@ function onDocumentReallyReady(){
 			console.log("list video: " + query['v']);
 			if(query['v'] != saved_video.vid){
 				print_debug("saving...");
+				
+				// keep this as the last watched video
+				savePlaylistVideo(query['list'] , query['v'] , "");
+				
+				// find the video's title on page, and make sure it is current video's title
+				// *if 2 videos as the same title, this will fail and leave the saved video untitled.
 				var title_el = document.querySelector("h1.title.ytd-video-primary-info-renderer");
 				if(title_el != null){
-					savePlaylistVideo(query['list'] , query['v'] , title_el.innerText);
+					title_retries = 120;
+					waitForTitleAndUpdate(title_el , query['list'] , query['v']);
 				}
 				else {
 					print_debug("Video's title is missing");
-				}
+				}				
 			}
 			else {
 				print_debug("already saved");
@@ -69,6 +80,26 @@ function onDocumentReallyReady(){
 			showLastVideoLink(saved_video);
 		}
 	}
+}
+
+function waitForTitleAndUpdate(title_el , listid , vid){
+	if(title_timer){
+		clearTimeout(title_timer);
+	}
+	
+	setTimeout(function(){
+		var video_title = title_el.innerText;
+		print_debug("found title: " + video_title);
+		if(video_title != "" && video_title != last_title_in_page){
+			savePlaylistVideo(listid , vid , video_title);
+			last_title_in_page = video_title;
+		}
+		else {
+			if(--title_retries >= 0){
+				waitForTitleAndUpdate(title_el , listid , vid);
+			}
+		}
+	}, 500);
 }
 
 // -----------------------------------------
@@ -131,7 +162,12 @@ function addLinkInVideoPage(saved_video){
 		}
 	}
 	
-	resume_link.innerHTML = "Last watched: '" + escapeHtml(saved_video.short_title) + "'";
+	if(saved_video.title == ""){
+		resume_link.innerHTML = "Go to last watched video";
+	}
+	else {
+		resume_link.innerHTML = "Last watched: '" + escapeHtml(saved_video.short_title) + "'";
+	}
 	resume_link.href = prepareLinkToListVideo(saved_video.listid , saved_video.vid);
 }
 
@@ -151,7 +187,12 @@ function addLinkInPlaylistPage(saved_video){
 	var resume_link = document.createElement("a");
 	resume_link.className = "resume-playlist";
 	resume_link.style = "display: inline-block; color: #ff7c3e; text-decoration: none; font-size: 16px; margin: 5px;"
-	resume_link.innerHTML = "Last watched: '" + escapeHtml(saved_video.title) + "'";
+	if(saved_video.title == ""){
+		resume_link.innerHTML = "Go to last watched video";
+	}
+	else {
+		resume_link.innerHTML = "Last watched: '" + escapeHtml(saved_video.title) + "'";
+	}
 	resume_link.href = prepareLinkToListVideo(saved_video.listid , saved_video.vid);
 	
 	var resume_remove = document.createElement("button");
@@ -159,7 +200,7 @@ function addLinkInPlaylistPage(saved_video){
 	resume_remove.style = "background-color: #ff7c3e; color: #FFFFFF; border: 0; padding: 3px 5px; cursor: pointer;";
 	resume_remove.innerHTML = "FORGET";
 	resume_remove.onclick = function(){
-		if(confirm("Forget the last video that you watched?\nTitle: '" + escapeHtml(saved_video.title) + "'")){
+		if(confirm("Forget the last video that you watched?\nTitle: '" + saved_video.title + "'")){
 			removeSavedPlaylistVideo(saved_video.listid);
 			resume_row.remove();
 			console.log(saved_video.listid + " data removed");
@@ -199,6 +240,8 @@ function savePlaylistVideo(listid, vid, title){
 		"vid"	: vid,
 		"title"	: title
 	};
+	
+	print_debug(save_data);
 	
 	if(use_localStorage){
 		localStorage.setItem(getPlaylistCookieName(listid), JSON.stringify(save_data));
