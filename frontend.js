@@ -87,7 +87,7 @@ var resumer = {
 		
 		toggle_button.innerHTML = "RESUME";
 		toggle_button.className = "ytp-button";
-		toggle_button.style = "line-height: 35px; padding: 0 5px; vertical-align: top; font-weight: bold; width: 55px;";
+		toggle_button.style = "padding: 0 5px; vertical-align: top; font-weight: bold; width: auto;"; /* doesnt support full screen:: width: 55px; line-height: 35px; */
 		
 		toggle_button.onclick = this.toggleAutoSave.bind(this);
 		

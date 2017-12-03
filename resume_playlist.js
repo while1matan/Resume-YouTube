@@ -1,20 +1,41 @@
-var last_url_query_data = "";
-
-//var cookie_separator = "|,|";
-var short_title_length = 30;
-
+var debug_enabled = null;	// add &resume_debug to url for debugging mode
+var document_timer;
+var short_title_length = 55;
 var use_localStorage = (typeof(Storage) !== "undefined");
 
-//DOMupdate();
+// waitForDocument();
 
 // http://stackoverflow.com/a/34100952/7550127
-document.addEventListener("spfdone", DOMupdate);
-document.addEventListener("DOMContentLoaded", DOMupdate);
+document.addEventListener("DOMContentLoaded", waitForDocument);
+document.addEventListener("spfdone", waitForDocument);	// old youtube design
+window.addEventListener("yt-navigate-finish", waitForDocument); // new youtube design
+
+// event listeners detect the changes, but the DOM isn't ready yet :@
+// so, we'll keep waiting for it.
+function waitForDocument(){
+	if(document_timer){
+		clearTimeout(document_timer);
+	}
+	
+	print_debug("new timer");
+	
+	document_timer = setTimeout(function(){		
+		print_debug("retry");
+		
+		// this element seems to appear in all the relevent pages (watch&video),
+		// so we don't need to check different elements in each page
+		if(document.querySelector(".title.ytd-video-primary-info-renderer") != null){
+			onDocumentReallyReady();
+		}
+		else {
+			waitForDocument();
+		}
+	}, 300);
+}
 
 // CHECK & UPDATE LAST SAVED PLAYLIST VIDEO
-function DOMupdate(){
-	//console.log("dom updated");
-
+// * this can be triggered few times for each page, because we check several events
+function onDocumentReallyReady(){
 	var query = pageParams();
 
 	// this page is part of a list?
@@ -25,22 +46,27 @@ function DOMupdate(){
 		
 		// this page containing video?
 		if("v" in query){
+			console.log("list video: " + query['v']);
 			if(query['v'] != saved_video.vid){
-				var v_title = document.getElementById("eow-title").innerText;
-				savePlaylistVideo(query['list'] , query['v'] , v_title);
+				print_debug("saving...");
+				var title_el = document.querySelector("h1.title.ytd-video-primary-info-renderer");
+				if(title_el != null){
+					savePlaylistVideo(query['list'] , query['v'] , title_el.innerText);
+				}
+				else {
+					print_debug("Video's title is missing");
+				}
 			}
 			else {
+				print_debug("already saved");
 				saved_video.vid = "";	// don't link to the same video
 			}
 		}
 		
-		// found last watched video?
+		// found saved video (different from this one)
 		if(saved_video.vid != ""){
-			console.log("playlist saved video: " + saved_video.vid);
+			print_debug("playlist saved video: " + saved_video.vid);
 			showLastVideoLink(saved_video);
-		}
-		else {
-			//console.log("this playlist has no video saved");
 		}
 	}
 }
@@ -70,6 +96,7 @@ function pageParams(){
 // -----------------------------------------
 
 function showLastVideoLink(saved_video){
+	print_debug("current page: " + window.location.pathname);
 	switch (window.location.pathname){
 		case "/watch": {
 			addLinkInVideoPage(saved_video);
@@ -83,27 +110,66 @@ function showLastVideoLink(saved_video){
 }
 
 function addLinkInVideoPage(saved_video){
-	var pl_controls = document.querySelector("#watch-appbar-playlist .playlist-nav-controls");
+	var resume_link = document.querySelector("#header-contents .resume-playlist");
 	
-	var a_link = document.createElement("a");
-	a_link.className = "yt-uix-button yt-uix-button-player-controls";
-	a_link.style = "color: #ff712d;"
-	a_link.innerHTML = "חזור אל '" + escapeHtml(saved_video.short_title) + "'";
-	a_link.href = prepareLinkToListVideo(saved_video.listid , saved_video.vid);
+	if(resume_link == null){
+		var list_header = document.querySelector("#header-contents");
+		if(list_header != null){
+			var resume_row = document.createElement("div");
+			resume_row.style = "display: block; margin: 3px 0;";
+			
+			resume_link = document.createElement("a");
+			resume_link.className = "resume-playlist";
+			resume_link.style = "color: #ff712d; text-decoration: none;"
+			
+			resume_row.appendChild(resume_link);
+			list_header.appendChild(resume_row);
+		}
+		else {
+			print_debug("Missing list header");
+			return;
+		}
+	}
 	
-	pl_controls.appendChild(a_link);
+	resume_link.innerHTML = "Last watched: '" + escapeHtml(saved_video.short_title) + "'";
+	resume_link.href = prepareLinkToListVideo(saved_video.listid , saved_video.vid);
 }
 
 function addLinkInPlaylistPage(saved_video){
-	var pl_controls = document.querySelector("#pl-header .playlist-actions");
+	print_debug("loading ui for playlist page");
 	
-	var a_link = document.createElement("a");
-	a_link.className = "yt-uix-button yt-uix-button-default";
-	a_link.style = "background-color: #ff7c3e;"
-	a_link.innerHTML = "חזור אל '" + escapeHtml(saved_video.title) + "'";
-	a_link.href = prepareLinkToListVideo(saved_video.listid , saved_video.vid);
+	var contents = document.querySelector("#contents.style-scope.ytd-playlist-video-list-renderer");
 	
-	pl_controls.appendChild(a_link);
+	if(contents == null){
+		print_debug("Missing contents element");
+		return;
+	}
+	
+	var resume_row = document.createElement("div");
+	resume_row.style = "display: block; margin: 5px 0;";
+	
+	var resume_link = document.createElement("a");
+	resume_link.className = "resume-playlist";
+	resume_link.style = "display: inline-block; color: #ff7c3e; text-decoration: none; font-size: 16px; margin: 5px;"
+	resume_link.innerHTML = "Last watched: '" + escapeHtml(saved_video.title) + "'";
+	resume_link.href = prepareLinkToListVideo(saved_video.listid , saved_video.vid);
+	
+	var resume_remove = document.createElement("button");
+	resume_remove.className = "resume-playlist-delete";
+	resume_remove.style = "background-color: #ff7c3e; color: #FFFFFF; border: 0; padding: 3px 5px; cursor: pointer;";
+	resume_remove.innerHTML = "FORGET";
+	resume_remove.onclick = function(){
+		if(confirm("Forget the last video that you watched?\nTitle: '" + escapeHtml(saved_video.title) + "'")){
+			removeSavedPlaylistVideo(saved_video.listid);
+			resume_row.remove();
+			console.log(saved_video.listid + " data removed");
+		}
+	}
+	
+	resume_row.appendChild(resume_link);
+	resume_row.appendChild(resume_remove);
+
+	contents.insertBefore(resume_row , contents.firstChild);
 }
 
 function prepareLinkToListVideo(listid , vid){
@@ -154,7 +220,7 @@ function getSavedPlaylistVideo(listid){
 		
 		// UPGRADE DATA STORAGE (from cookies to localStorage)
 		if(data == null && cookie_data != ""){
-			//console.log("upgrading list cookie");
+			print_debug("upgrading list cookie");
 			localStorage.setItem(list_key, cookie_data);
 			data = cookie_data;
 			removeCookie(list_key);
@@ -187,6 +253,15 @@ function getSavedPlaylistVideo(listid){
 		"title"			: saved_data.title,
 		"short_title"	: saved_data.title.substring(0,short_title_length) + ((saved_data.title.length > short_title_length)? "..." : "")
 	};
+}
+
+function removeSavedPlaylistVideo(listid){
+	if(use_localStorage){
+		localStorage.removeItem(getPlaylistCookieName(listid));
+	}
+	else {
+		removeCookie(getPlaylistCookieName(listid));
+	}
 }
 
 // SAVE COOKIE
@@ -225,4 +300,23 @@ function getCookie(name){
 	}
 	
 	return "";
+}
+
+// -----------------------------------------
+//	DEBUGGING
+// -----------------------------------------
+
+function print_debug(data){
+	if(isDebugging()){
+		console.log(data);
+	}
+}
+
+function isDebugging(){
+	if(debug_enabled == null){
+		var query = pageParams();
+		debug_enabled = ("resume_debug" in query);
+	}
+	
+	return debug_enabled;
 }
